@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  vllm-worker:
+    image: ghcr.io/vllm-project/vllm:latest
+    command: >
+      python -m vllm.entrypoints.worker
+      --model meta-llama/Llama-2-7b-chat-hf
+      --host 0.0.0.0
+      --port 8001
+      --worker-address http://${WORKER_HOST:-localhost}:8001
+      --controller-address ${CONTROLLER_URL}
+    ports:
+      - "8001:8001"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    environment:
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN}
+      - WORKER_HOST=${WORKER_HOST:-localhost}
+    volumes:
+      - ${MODELS_PATH}:/root/.cache/huggingface
