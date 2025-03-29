@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   vllm-controller:
-    image: ghcr.io/vllm-project/vllm:latest
+    image: vllm-phenix:latest
     command: >
       python -m vllm.entrypoints.openai.api_server
       --model meta-llama/Llama-2-7b-chat-hf

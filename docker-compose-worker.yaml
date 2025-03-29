@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   vllm-worker:
-    image: ghcr.io/vllm-project/vllm:latest
+    image: vllm-phenix:latest
     command: >
       python -m vllm.entrypoints.worker
       --model meta-llama/Llama-2-7b-chat-hf
