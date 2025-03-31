@@ -7,7 +7,7 @@ echo "Starting vLLM deployment process..."
 
 # Run the build script
 echo "Running build script..."
-./build.sh
+bash build.sh
 
 # Ask user for container choice
 echo "Please choose which container to launch:"
