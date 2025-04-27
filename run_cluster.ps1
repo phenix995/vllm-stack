@@ -50,6 +50,7 @@ It requires Docker Desktop for Windows to be installed and running.
 - May require adjusting PowerShell execution policy (e.g., Set-ExecutionPolicy RemoteSigned -Scope CurrentUser).
 - Path conversion for volume mounts assumes Docker Desktop handles standard Windows paths (e.g., C:/Users/...). If you encounter issues, you might need to adjust the Convert-WindowsPathToDockerMount function for WSL-style paths (e.g., /mnt/c/Users/...).
 - Head node specific environment variables can be set via HEAD_NODE_EXTRA_ENV_VARS in .env (e.g., "CUDA_DEVICE_ORDER=PCI_BUS_ID").
+- GPU exposure to the container can be configured via GPUS_TO_USE in .env (defaults to "all", use '"device=0,1"' for specific GPUs).
 #>
 param(
     [Parameter(Mandatory=$false, Position=0)] # Changed Mandatory to $false
@@ -103,11 +104,13 @@ if (Test-Path $EnvFile) {
             $parts = $line -split '=', 2
             if ($parts.Length -eq 2) {
                 $name = $parts[0].Trim()
-                $value = $parts[1].Trim().Trim('"').Trim("'") # Remove potential quotes
-                # Store in our hash table
+                # Trim quotes from value, but handle potential internal quotes carefully if needed later
+                $value = $parts[1].Trim().Trim('"').Trim("'")
+                # Special handling for GPUS_TO_USE if it was quoted in .env
+                if ($name -eq 'GPUS_TO_USE' -and $parts[1].Trim().StartsWith('"') -and $parts[1].Trim().EndsWith('"')) {
+                    $value = $parts[1].Trim().Trim('"') # Keep internal content as is
+                }
                 $envVars[$name] = $value
-                # Optionally set as process environment variables if needed by sub-processes
-                # [System.Environment]::SetEnvironmentVariable($name, $value, "Process")
             }
         }
     }
@@ -157,6 +160,10 @@ if (-not [string]::IsNullOrWhiteSpace($HeadNodeExtraEnvVarsString)) {
     $HeadNodeExtraEnvVarsArray = $HeadNodeExtraEnvVarsString -split ' ' | Where-Object {$_}
 }
 
+# Get GPU configuration
+$FinalGpusToUse = $envVars['GPUS_TO_USE']
+if ([string]::IsNullOrWhiteSpace($FinalGpusToUse)) { $FinalGpusToUse = "all" } # Default to "all"
+
 
 # --- Basic Validation ---
 # NodeType is already validated
@@ -192,7 +199,7 @@ $ContainerHFHome = "/root/.cache/huggingface" # Standard path inside vLLM contai
 $CommonDockerOpts = @(
     "-it" # Interactive TTY. Use -d for detached. Consider making this an option.
     "--rm" # Remove container on exit.
-    "--gpus", "all" # Make GPUs available. Requires nvidia-container-toolkit support in Docker Desktop.
+    "--gpus", $FinalGpusToUse # Make GPUs available based on config. Requires nvidia-container-toolkit support in Docker Desktop.
     "--shm-size=1g" # Recommended shared memory size for Ray.
     "-v", "${DockerHFHomeHost}:${ContainerHFHome}" # Mount HF cache
     "-p", "8265:8265" # Expose Ray Dashboard port.
@@ -250,6 +257,7 @@ Write-Host "--------------------------------------------------"
 Write-Host "Configuration:"
 Write-Host "  Node Type: $NodeType"
 Write-Host "  Using Image: $FinalImage"
+Write-Host "  GPUs Exposed: $FinalGpusToUse"
 if ($NodeType -eq "--worker") {
   Write-Host "  Head Node IP: $FinalHeadIP"
 }

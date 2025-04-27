@@ -33,7 +33,7 @@ usage() {
   echo ""
   echo "Configuration can be provided via .env file or command-line arguments."
   echo "Command-line arguments override values set in .env."
-  echo "See .env file for additional configuration like HEAD_NODE_EXTRA_ENV_VARS."
+  echo "See .env file for additional configuration like HEAD_NODE_EXTRA_ENV_VARS and GPUS_TO_USE."
   echo ""
   echo "Example (head, using .env defaults): $0 --head"
   echo "Example (head, prompting for type): $0"
@@ -50,6 +50,7 @@ DEFAULT_HEAD_NODE_IP="${DEFAULT_HEAD_NODE_IP:-}"
 DEFAULT_HOST_HF_HOME_PATH="${DEFAULT_HOST_HF_HOME_PATH:-${HOME}/.cache/huggingface}"
 DEFAULT_ADDITIONAL_DOCKER_ARGS="${DEFAULT_ADDITIONAL_DOCKER_ARGS:-}"
 HEAD_NODE_EXTRA_ENV_VARS="${HEAD_NODE_EXTRA_ENV_VARS:-}" # Read from .env or set to empty
+GPUS_TO_USE="${GPUS_TO_USE:-all}" # Read from .env or default to "all"
 
 # --- Determine Node Type (Prompt if necessary) ---
 NODE_TYPE=""
@@ -130,14 +131,14 @@ fi
 # --- Common Docker Options ---
 # -it: Interactive TTY. Keeps the container attached to the shell. Use -d for detached mode.
 # --rm: Remove container on exit.
-# --gpus all: Make GPUs available. Ensure nvidia-container-toolkit is installed.
+# --gpus: Make GPUs available based on GPUS_TO_USE setting. Ensure nvidia-container-toolkit is installed.
 # --shm-size=1g: Recommended shared memory size for Ray.
 # -v: Mount the host's Hugging Face cache directory into the container.
 # -p 8265:8265: Expose Ray Dashboard port.
 COMMON_DOCKER_OPTS=(
     "-it"
     "--rm"
-    "--gpus" "all"
+    "--gpus" "${GPUS_TO_USE}" # Use the configured GPU setting
     "--shm-size=1g"
     "-v" "${HF_HOME_HOST}:/root/.cache/huggingface"
     "-p" "8265:8265"
@@ -196,6 +197,7 @@ echo "--------------------------------------------------"
 echo "Configuration:"
 echo "  Node Type: ${NODE_TYPE}"
 echo "  Using Image: ${IMAGE}"
+echo "  GPUs Exposed: ${GPUS_TO_USE}"
 if [ "$NODE_TYPE" == "--worker" ]; then
   echo "  Head Node IP: ${HEAD_IP}"
 fi
