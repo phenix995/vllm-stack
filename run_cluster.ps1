@@ -49,6 +49,7 @@ It requires Docker Desktop for Windows to be installed and running.
 - Assumes PowerShell 5.1 or later.
 - May require adjusting PowerShell execution policy (e.g., Set-ExecutionPolicy RemoteSigned -Scope CurrentUser).
 - Path conversion for volume mounts assumes Docker Desktop handles standard Windows paths (e.g., C:/Users/...). If you encounter issues, you might need to adjust the Convert-WindowsPathToDockerMount function for WSL-style paths (e.g., /mnt/c/Users/...).
+- Head node specific environment variables can be set via HEAD_NODE_EXTRA_ENV_VARS in .env (e.g., "CUDA_DEVICE_ORDER=PCI_BUS_ID").
 #>
 param(
     [Parameter(Mandatory=$false, Position=0)] # Changed Mandatory to $false
@@ -149,6 +150,13 @@ if ([string]::IsNullOrWhiteSpace($FinalHFHomeHost)) { $FinalHFHomeHost = Join-Pa
 $FinalAdditionalDockerArgs = if ($PSBoundParameters.ContainsKey('AdditionalDockerArgs')) { $AdditionalDockerArgs } else { $envVars['DEFAULT_ADDITIONAL_DOCKER_ARGS'] -split ' ' | Where-Object {$_} } # Split string from env var, filter empty
 if ($null -eq $FinalAdditionalDockerArgs) { $FinalAdditionalDockerArgs = @() } # Ensure it's an empty array if null
 
+# Get Head Node specific env vars from .env
+$HeadNodeExtraEnvVarsString = $envVars['HEAD_NODE_EXTRA_ENV_VARS']
+$HeadNodeExtraEnvVarsArray = @() # For adding to docker command
+if (-not [string]::IsNullOrWhiteSpace($HeadNodeExtraEnvVarsString)) {
+    $HeadNodeExtraEnvVarsArray = $HeadNodeExtraEnvVarsString -split ' ' | Where-Object {$_}
+}
+
 
 # --- Basic Validation ---
 # NodeType is already validated
@@ -194,12 +202,23 @@ $CommonDockerOpts = @(
 $NodeSpecificOpts = @()
 $RayCommand = ""
 $ContainerName = ""
+$HeadEnvVarsForDisplay = @() # For summary output
 
 if ($NodeType -eq "--head") {
     Write-Host "Configuring as HEAD node..."
     $ContainerName = "head_node"
     # Expose Ray GCS port only on the head node
     $NodeSpecificOpts += "-p", "6379:6379"
+
+    # Add extra environment variables for the head node from .env
+    if ($HeadNodeExtraEnvVarsArray.Count -gt 0) {
+        Write-Host "Adding extra head node environment variables: $($HeadNodeExtraEnvVarsArray -join ' ')"
+        foreach ($envVar in $HeadNodeExtraEnvVarsArray) {
+            $NodeSpecificOpts += "-e", $envVar
+            $HeadEnvVarsForDisplay += $envVar # Store for summary
+        }
+    }
+
     # Command to start Ray head node
     $RayCommand = "ray start --head --port=6379 --dashboard-host 0.0.0.0 --dashboard-port=8265 --block"
 
@@ -233,6 +252,9 @@ Write-Host "  Node Type: $NodeType"
 Write-Host "  Using Image: $FinalImage"
 if ($NodeType -eq "--worker") {
   Write-Host "  Head Node IP: $FinalHeadIP"
+}
+if ($NodeType -eq "--head" -and $HeadEnvVarsForDisplay.Count -gt 0) {
+  Write-Host "  Head Node Env Vars: $($HeadEnvVarsForDisplay -join ' ')"
 }
 Write-Host "  Host HF Home: $FinalHFHomeHost"
 Write-Host "  Mapped to Container HF Home: $ContainerHFHome (Docker Path: $DockerHFHomeHost)"

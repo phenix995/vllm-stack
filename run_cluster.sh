@@ -33,6 +33,7 @@ usage() {
   echo ""
   echo "Configuration can be provided via .env file or command-line arguments."
   echo "Command-line arguments override values set in .env."
+  echo "See .env file for additional configuration like HEAD_NODE_EXTRA_ENV_VARS."
   echo ""
   echo "Example (head, using .env defaults): $0 --head"
   echo "Example (head, prompting for type): $0"
@@ -48,6 +49,7 @@ DEFAULT_DOCKER_IMAGE="${DEFAULT_DOCKER_IMAGE:-vllm/vllm-openai:latest}"
 DEFAULT_HEAD_NODE_IP="${DEFAULT_HEAD_NODE_IP:-}"
 DEFAULT_HOST_HF_HOME_PATH="${DEFAULT_HOST_HF_HOME_PATH:-${HOME}/.cache/huggingface}"
 DEFAULT_ADDITIONAL_DOCKER_ARGS="${DEFAULT_ADDITIONAL_DOCKER_ARGS:-}"
+HEAD_NODE_EXTRA_ENV_VARS="${HEAD_NODE_EXTRA_ENV_VARS:-}" # Read from .env or set to empty
 
 # --- Determine Node Type (Prompt if necessary) ---
 NODE_TYPE=""
@@ -145,12 +147,25 @@ COMMON_DOCKER_OPTS=(
 NODE_SPECIFIC_OPTS=()
 RAY_COMMAND=""
 CONTAINER_NAME=""
+HEAD_ENV_VARS_ARRAY=() # For display purposes
 
 if [ "$NODE_TYPE" == "--head" ]; then
     echo "Configuring as HEAD node..."
     CONTAINER_NAME="head_node"
     # Expose Ray GCS port only on the head node
     NODE_SPECIFIC_OPTS+=("-p" "6379:6379")
+
+    # Add extra environment variables for the head node from .env
+    if [ -n "$HEAD_NODE_EXTRA_ENV_VARS" ]; then
+        echo "Adding extra head node environment variables: $HEAD_NODE_EXTRA_ENV_VARS"
+        # Split the string by space and add each as -e VAR=VALUE
+        read -r -a env_vars_array <<< "$HEAD_NODE_EXTRA_ENV_VARS"
+        for env_var in "${env_vars_array[@]}"; do
+            NODE_SPECIFIC_OPTS+=("-e" "$env_var")
+            HEAD_ENV_VARS_ARRAY+=("$env_var") # Store for summary
+        done
+    fi
+
     # Command to start Ray head node
     RAY_COMMAND="ray start --head --port=6379 --dashboard-host 0.0.0.0 --dashboard-port=8265 --block"
 
@@ -183,6 +198,9 @@ echo "  Node Type: ${NODE_TYPE}"
 echo "  Using Image: ${IMAGE}"
 if [ "$NODE_TYPE" == "--worker" ]; then
   echo "  Head Node IP: ${HEAD_IP}"
+fi
+if [ "$NODE_TYPE" == "--head" ] && [ ${#HEAD_ENV_VARS_ARRAY[@]} -gt 0 ]; then
+  echo "  Head Node Env Vars: ${HEAD_ENV_VARS_ARRAY[*]}"
 fi
 echo "  Host HF Home: ${HF_HOME_HOST}"
 echo "  Mapped to Container HF Home: /root/.cache/huggingface"
