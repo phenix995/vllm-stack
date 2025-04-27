@@ -146,7 +146,7 @@ COMMON_DOCKER_OPTS=(
 
 # --- Node Specific Configuration ---
 NODE_SPECIFIC_OPTS=()
-RAY_COMMAND=""
+RAY_COMMAND=() # Changed to array
 CONTAINER_NAME=""
 HEAD_ENV_VARS_ARRAY=() # For display purposes
 
@@ -167,15 +167,15 @@ if [ "$NODE_TYPE" == "--head" ]; then
         done
     fi
 
-    # Command to start Ray head node
-    RAY_COMMAND="ray start --head --port=6379 --dashboard-host 0.0.0.0 --dashboard-port=8265 --block"
+    # Command to start Ray head node (as array)
+    RAY_COMMAND=("ray" "start" "--head" "--port=6379" "--dashboard-host" "0.0.0.0" "--dashboard-port=8265" "--block")
 
 elif [ "$NODE_TYPE" == "--worker" ]; then
     echo "Configuring as WORKER node connecting to $HEAD_IP..."
     # Use a relatively unique name for worker nodes
     CONTAINER_NAME="worker_node_$(hostname)_$(date +%s)"
-    # Command to start Ray worker node connecting to the head
-    RAY_COMMAND="ray start --address=${HEAD_IP}:6379 --block"
+    # Command to start Ray worker node connecting to the head (as array)
+    RAY_COMMAND=("ray" "start" "--address=${HEAD_IP}:6379" "--block")
 
 fi
 
@@ -183,14 +183,14 @@ fi
 NODE_SPECIFIC_OPTS+=("--name" "$CONTAINER_NAME")
 
 # --- Construct and Run Docker Command ---
-# Combine common options, node-specific options, additional args, the image, and the command
+# Combine common options, node-specific options, additional args, the image, and the command array
 FULL_DOCKER_COMMAND=(
     "docker" "run"
     "${COMMON_DOCKER_OPTS[@]}"
     "${NODE_SPECIFIC_OPTS[@]}"
     "${ADDITIONAL_DOCKER_ARGS[@]}" # Pass through additional arguments
     "$IMAGE"
-    $RAY_COMMAND # Needs to be unquoted to be treated as command + args by docker run
+    "${RAY_COMMAND[@]}" # Append elements of the RAY_COMMAND array
 )
 
 echo "--------------------------------------------------"
