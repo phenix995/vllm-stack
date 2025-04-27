@@ -207,7 +207,7 @@ $CommonDockerOpts = @(
 
 # --- Node Specific Configuration ---
 $NodeSpecificOpts = @()
-$RayCommand = @() # Changed to array
+$RayArgs = @() # Arguments for the 'ray' entrypoint
 $ContainerName = ""
 $HeadEnvVarsForDisplay = @() # For summary output
 
@@ -226,16 +226,16 @@ if ($NodeType -eq "--head") {
         }
     }
 
-    # Command to start Ray head node (as array)
-    $RayCommand = @("ray", "start", "--head", "--port=6379", "--dashboard-host", "0.0.0.0", "--dashboard-port=8265", "--block")
+    # Arguments for 'ray' command (entrypoint)
+    $RayArgs = @("start", "--head", "--port=6379", "--dashboard-host", "0.0.0.0", "--dashboard-port=8265", "--block")
 
 } elseif ($NodeType -eq "--worker") {
     Write-Host "Configuring as WORKER node connecting to $FinalHeadIP..."
     # Use a relatively unique name for worker nodes
     $Timestamp = Get-Date -Format "yyyyMMddHHmmss"
     $ContainerName = "worker_node_${env:COMPUTERNAME}_${Timestamp}"
-    # Command to start Ray worker node connecting to the head (as array)
-    $RayCommand = @("ray", "start", "--address=${FinalHeadIP}:6379", "--block")
+    # Arguments for 'ray' command (entrypoint)
+    $RayArgs = @("start", "--address=${FinalHeadIP}:6379", "--block")
 }
 
 # Add container name to node specific options
@@ -248,8 +248,9 @@ $DockerArgs = @(
     $CommonDockerOpts
     $NodeSpecificOpts
     $FinalAdditionalDockerArgs # Splat the array of additional args
+    "--entrypoint", "ray"      # Override entrypoint
     $FinalImage
-    $RayCommand # Append elements of the RayCommand array
+    $RayArgs                   # Pass arguments to the 'ray' entrypoint
 )
 
 Write-Host "--------------------------------------------------"

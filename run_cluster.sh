@@ -146,7 +146,7 @@ COMMON_DOCKER_OPTS=(
 
 # --- Node Specific Configuration ---
 NODE_SPECIFIC_OPTS=()
-RAY_COMMAND=() # Changed to array
+RAY_ARGS=() # Arguments for the 'ray' entrypoint
 CONTAINER_NAME=""
 HEAD_ENV_VARS_ARRAY=() # For display purposes
 
@@ -167,15 +167,15 @@ if [ "$NODE_TYPE" == "--head" ]; then
         done
     fi
 
-    # Command to start Ray head node (as array)
-    RAY_COMMAND=("ray" "start" "--head" "--port=6379" "--dashboard-host" "0.0.0.0" "--dashboard-port=8265" "--block")
+    # Arguments for 'ray' command (entrypoint)
+    RAY_ARGS=("start" "--head" "--port=6379" "--dashboard-host" "0.0.0.0" "--dashboard-port=8265" "--block")
 
 elif [ "$NODE_TYPE" == "--worker" ]; then
     echo "Configuring as WORKER node connecting to $HEAD_IP..."
     # Use a relatively unique name for worker nodes
     CONTAINER_NAME="worker_node_$(hostname)_$(date +%s)"
-    # Command to start Ray worker node connecting to the head (as array)
-    RAY_COMMAND=("ray" "start" "--address=${HEAD_IP}:6379" "--block")
+    # Arguments for 'ray' command (entrypoint)
+    RAY_ARGS=("start" "--address=${HEAD_IP}:6379" "--block")
 
 fi
 
@@ -189,8 +189,9 @@ FULL_DOCKER_COMMAND=(
     "${COMMON_DOCKER_OPTS[@]}"
     "${NODE_SPECIFIC_OPTS[@]}"
     "${ADDITIONAL_DOCKER_ARGS[@]}" # Pass through additional arguments
+    "--entrypoint" "ray"          # Override entrypoint
     "$IMAGE"
-    "${RAY_COMMAND[@]}" # Append elements of the RAY_COMMAND array
+    "${RAY_ARGS[@]}"              # Pass arguments to the 'ray' entrypoint
 )
 
 echo "--------------------------------------------------"
