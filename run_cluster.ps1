@@ -5,26 +5,28 @@ Script to launch vLLM Docker containers for a Ray cluster (head or worker) on Wi
 .DESCRIPTION
 This PowerShell script configures and runs a Docker container for either a Ray head node or a Ray worker node.
 It reads default configuration from a .env file in the same directory, but command-line arguments take precedence.
+If the node type is not specified as the first argument, the script will prompt for it.
 It requires Docker Desktop for Windows to be installed and running.
 
 .PARAMETER NodeType
-(Required) Specify whether to run as '--head' or '--worker' node.
+(Optional, Position=0) Specify whether to run as '--head' or '--worker' node. If omitted, you will be prompted.
 
 .PARAMETER DockerImage
-(Optional) Docker image to use. Defaults to value in .env or 'vllm/vllm-openai:latest'.
+(Optional, Position=1) Docker image to use. Defaults to value in .env or 'vllm/vllm-openai:latest'.
 
 .PARAMETER HeadNodeIP
-(Optional) IP address of the head node. Required for worker nodes if not set in .env.
+(Optional, Position=2) IP address of the head node. Required for worker nodes if not set in .env.
 
 .PARAMETER HostHFHomePath
-(Optional) Path to the host's Hugging Face cache directory. Defaults to value in .env or '$env:USERPROFILE\.cache\huggingface'.
+(Optional, Position=3) Path to the host's Hugging Face cache directory. Defaults to value in .env or '$env:USERPROFILE\.cache\huggingface'.
 
 .PARAMETER AdditionalDockerArgs
 (Optional) Any additional arguments to pass directly to 'docker run'. Must be passed after all other positional arguments.
 
 .EXAMPLE
-# Run as head node using .env defaults
+# Run as head node using .env defaults (will prompt for node type if --head is omitted)
 .\run_cluster.ps1 --head
+.\run_cluster.ps1
 
 .EXAMPLE
 # Run as head node, overriding the image
@@ -35,7 +37,7 @@ It requires Docker Desktop for Windows to be installed and running.
 .\run_cluster.ps1 --worker --HeadNodeIP 192.168.1.100
 
 .EXAMPLE
-# Run as worker node, specifying all parameters
+# Run as worker node, specifying all parameters positionally (after type)
 .\run_cluster.ps1 --worker vllm/vllm-openai:latest 192.168.1.100 C:\Users\Me\.cache\huggingface
 
 .EXAMPLE
@@ -49,7 +51,7 @@ It requires Docker Desktop for Windows to be installed and running.
 - Path conversion for volume mounts assumes Docker Desktop handles standard Windows paths (e.g., C:/Users/...). If you encounter issues, you might need to adjust the Convert-WindowsPathToDockerMount function for WSL-style paths (e.g., /mnt/c/Users/...).
 #>
 param(
-    [Parameter(Mandatory=$true, Position=0)]
+    [Parameter(Mandatory=$false, Position=0)] # Changed Mandatory to $false
     [ValidateSet('--head', '--worker')]
     [string]$NodeType,
 
@@ -112,22 +114,45 @@ if (Test-Path $EnvFile) {
     Write-Host "No .env file found, relying solely on command-line arguments and script defaults."
 }
 
+# --- Determine Node Type (Prompt if necessary) ---
+# Check if NodeType parameter was bound (provided by user)
+if (-not $PSBoundParameters.ContainsKey('NodeType')) {
+    Write-Host "Node type (--head or --worker) was not specified."
+    while ($true) {
+        $selectedType = Read-Host "Please enter node type (--head or --worker)"
+        if ($selectedType -eq '--head' -or $selectedType -eq '--worker') {
+            $NodeType = $selectedType # Assign the valid input
+            break # Exit loop
+        } else {
+            Write-Warning "Invalid input. Please enter exactly '--head' or '--worker'."
+        }
+    }
+}
+# If NodeType was provided, ValidateSet in param block handles validation.
+
 # --- Configuration & Default Values ---
 # Priority: Command-line arg > .env file > Script default
 
-$FinalImage = if ([string]::IsNullOrWhiteSpace($DockerImage)) { $envVars['DEFAULT_DOCKER_IMAGE'] } else { $DockerImage }
+# Note: $DockerImage, $HeadNodeIP, $HostHFHomePath are already populated from bound parameters if provided.
+# We only apply defaults if the parameter was NOT provided OR if it was provided but is empty/whitespace.
+
+$FinalImage = if ($PSBoundParameters.ContainsKey('DockerImage') -and -not [string]::IsNullOrWhiteSpace($DockerImage)) { $DockerImage } else { $envVars['DEFAULT_DOCKER_IMAGE'] }
 if ([string]::IsNullOrWhiteSpace($FinalImage)) { $FinalImage = "vllm/vllm-openai:latest" } # Script default
 
-$FinalHeadIP = if ([string]::IsNullOrWhiteSpace($HeadNodeIP)) { $envVars['DEFAULT_HEAD_NODE_IP'] } else { $HeadNodeIP }
+$FinalHeadIP = if ($PSBoundParameters.ContainsKey('HeadNodeIP') -and -not [string]::IsNullOrWhiteSpace($HeadNodeIP)) { $HeadNodeIP } else { $envVars['DEFAULT_HEAD_NODE_IP'] }
 # No script default for Head IP, validation later
 
-$FinalHFHomeHost = if ([string]::IsNullOrWhiteSpace($HostHFHomePath)) { $envVars['DEFAULT_HOST_HF_HOME_PATH'] } else { $HostHFHomePath }
+$FinalHFHomeHost = if ($PSBoundParameters.ContainsKey('HostHFHomePath') -and -not [string]::IsNullOrWhiteSpace($HostHFHomePath)) { $HostHFHomePath } else { $envVars['DEFAULT_HOST_HF_HOME_PATH'] }
 if ([string]::IsNullOrWhiteSpace($FinalHFHomeHost)) { $FinalHFHomeHost = Join-Path $env:USERPROFILE ".cache\huggingface" } # Script default
 
-$FinalAdditionalDockerArgs = if ($AdditionalDockerArgs.Count -gt 0) { $AdditionalDockerArgs } else { $envVars['DEFAULT_ADDITIONAL_DOCKER_ARGS'] -split ' ' | Where-Object {$_} } # Split string from env var, filter empty
+# Handle AdditionalDockerArgs - use command line if provided, else use .env default
+$FinalAdditionalDockerArgs = if ($PSBoundParameters.ContainsKey('AdditionalDockerArgs')) { $AdditionalDockerArgs } else { $envVars['DEFAULT_ADDITIONAL_DOCKER_ARGS'] -split ' ' | Where-Object {$_} } # Split string from env var, filter empty
 if ($null -eq $FinalAdditionalDockerArgs) { $FinalAdditionalDockerArgs = @() } # Ensure it's an empty array if null
 
+
 # --- Basic Validation ---
+# NodeType is already validated
+
 if ([string]::IsNullOrWhiteSpace($FinalImage)) {
     Write-Error "Docker image must be specified via command line or DEFAULT_DOCKER_IMAGE in .env"
     exit 1
